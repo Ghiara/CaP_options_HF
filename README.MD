@@ -93,14 +93,14 @@ agent = CapOptioner(memory_dir="trained")
 Some examples of behaviours you can view with `agent.run_past_example()` are:
 
 - "build a jenga tower"
-- "build a <w*d*h> block structure at <pose>"
+- "build a (w*d*h) block structure at (pose)"
 - "build a zig-zag tower"
 - "build a house"
-- "stack the blocks at <pose>"
-- "put <blockA> on the <side> side of <blockB>"
+- "stack the blocks at (pose)"
+- "put (blockA) on the (side) side of (blockB)"
 - ...
 
-You can also just set up a task and issue these prompts independently from rolling out past examples, though each skill only works within certain constraints.
+You can also just set up a task and issue these prompts independently from rolling out past examples, though each skill only works within certain constraints (i.e. from some set of initial states).
 
 ## Repository Structure
 
