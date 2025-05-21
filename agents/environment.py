@@ -1,11 +1,11 @@
-from utils.task_and_store import Task, GeneratedTask
+from task.task_and_store import Task, GeneratedTask
 from agents.model import EnvironmentConfiguration
 from environments.environment import Environment
 from agents.memory import MemoryManager
 from prompts.task_gen_prompt import task_setup_system_prompt
 from utils.llm_utils import query_llm, parse_code_response
 
-from utils.sample_tasks import Place2Blocks
+from task.sample_tasks import Place2Blocks
 
 
 class EnvironmentAgent:
@@ -27,8 +27,10 @@ class EnvironmentAgent:
         self.reset()
         self.memory_manager = memory_manager
 
+    def parse_predefined_task(self, identifier):
+        self.current_task = get_task_with_identifier(identifier)
+
     def parse_task_dummy(self):
-        # call instead of parse_task to manually set tasks
         self.current_task = Place2Blocks()
 
     def parse_task(self):

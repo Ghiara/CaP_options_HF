@@ -138,7 +138,7 @@ The interface we've created is still pretty bare-bones, and serves more as a pro
 
 2. Environment - our environment is quite limited, when technically this approach should enable arbitrary, open-ended behaviours in more meaningful scenarios, provided the right set of base control and perception primitives. Thanks to our context-dependent retrieval of skills and examples, we can provide a larger number of base control and perception primitives.
 
-3. Control APIs - the robotic arm is currently controlled with a waypoint-based inverse kinematics controller. This makes certain end-effector motions (e.g. along a straight line along the horizontal plane) difficult to achieve. Similarly, rotations of the end-effector that are not along the z-axis don't work reliably. The gripper included in the Ravens benchmark doesn't seem to work very well either.
+3. Control APIs - the robotic arm is currently controlled with a waypoint-based inverse kinematics controller. This makes certain end-effector motions (e.g. along a straight line along the horizontal plane, or end-effector rotations not along z-axis) difficult to achieve. The gripper included in the Ravens benchmark doesn't seem to work very well either.
 
 4. Interpretability - we _could_ talk to the agent about what it is capable of, by interacting with its memory (e.g. asking it about what tasks it has solved previously, and what the environment looked like), though we have not implemented it. _Hints_ are one instance of this – while providing feedback on generated policy code, we make it possible for the user to tell the robot to use a specific skill (see [agents/action.py](agents/action.py) – revise_code_with_feedback).
 
@@ -148,4 +148,4 @@ The interface we've created is still pretty bare-bones, and serves more as a pro
 - [Code-as-Policies](https://github.com/google-research/google-research/tree/master/code_as_policies) - code-generation for robotics
 - [LoHoRavens](https://github.com/Shengqiang-Zhang/LoHo-Ravens) - for task inspiration
 - [CapRavens](https://github.com/Flakeeeet/capravens) - was the basis for my thesis
-- [VOYAGER](https://github.com/MineDojo/Voyager), [Expel](https://github.com/LeapLabTHU/ExpeL), [DROC](https://github.com/Stanford-ILIAD/droc) - provided the inspiration for our code base
+- [VOYAGER](https://github.com/MineDojo/Voyager), [Expel](https://github.com/LeapLabTHU/ExpeL), [DROC](https://github.com/Stanford-ILIAD/droc) - provided the inspiration for our code base, and the concept of LLM-Agent -_learning_ by reading and writing to memory based on experience
