@@ -6,19 +6,19 @@
 
 3. [Overview](#Overview)
 
-4. [Repository Structure](#RepositoryStructure)
+4. [Interaction](#Interaction)
 
-5. [Interaction](#Interaction)
+5. [Repository Structure](#RepositoryStructure)
 
-6. [Future Work](#FutureWork)
+6. [Known Weaknesses](#KnownWeaknesses)
 
 7. [Acknowledgements](#Acknowledgements)
 
 ## Introduction
 
-Approaches that use LLMs to generate robot control code have become increasingly popular in robotics. Such approaches typically build on a fixed API of perception and control primitives, and handcrafted prompts that contain examples of how these API functions can be called in response to natural language instructions. The capabilities of the agent are determined completely by the API and these prompts, as such these are the primary avenues for altering the agents behaviour if it doesn't align with our expectations. We propose a simple alternative mechanism for _learning_ based on _Retrieval-augmented Generation_, i.e. endowing the agent with a memory.
+Approaches that use LLMs to generate robot control code have become increasingly popular in robotics. Such approaches typically build on a fixed API of perception and control primitives, and handcrafted prompts that contain examples of how these API functions can be called in response to natural language instructions. The capabilities of the agent are determined completely by the API and these prompts, as such these are the primary avenues for altering the agents behaviour if it doesn't align with our expectations. We propose to _learn_ from human feedback (or environment feedback, if available) by endowing the agent with a memory, and provide a simple CLI to demonstrate this approach in a block-stacking environment.
 
-We focus on _learning from human feedback_, inspired by methods in Teleoperation and End-user Programming: adaptation to a specific environment requires environment experts. Also, LLM/VLM self-correction just doesn't work that well yet. A human operator can _teach_ the agent _skills_ by setting up _tasks_, and then providing feedback. We test this idea in a simple pick-and-place environment.
+You can _teach_ the agent new skills by telling it what you want it to learn, and then providing multiple tasks to test whether it has successfully learned the skill. Most of the time, you will have to provide corrections to get to the right result. With more corrections, the skill becomes increasingly refined to match the expectations we have of it, i.e. the agent does what you want more consistently. Once you've taught the agent a behaviour, it may use it to more easily solve downstream tasks.
 
 ## Installation
 
@@ -38,114 +38,109 @@ mamba env create -n cap-options -f environment.yml
 You will need to add an OpenAI API key as a python environment variable to run experiments.
 For example, you can add the following line to .bashrc, .zshrc, or .bash_profile.
 
-```bash
+```
 export OPENAI_API_KEY=<your_key_here>
 ```
 
+Also add `export PYTHONPATH="/path/to/your/project/root:$PYTHONPATH"` if you want to run the agent modules individually (e.g. to interact with skill library or task setup).
+
 ## Overview
 
-A **skill** $z$ is a python function. The agent can use skills to solve a task, by generating python code $c$ that calls these skills.
+A [**skill**](agents/model/skill.py) is a python function, which the agent calls when writing code to solve a [**task**](task/task_and_store.py). An [**example**](agents/model/example.py) is a pair of a natural language instruction and the python code (which calls different skills) used to successfully respond to the instruction. When presented with a new instruction, the agent is more likely to be able to respond to it correctly if it has examples of similar instructions. A skill represents the part of the behaviour which the agent should not vary in downstream tasks, whereas the example code demonstrates _how_ and _when_ to call a skill (i.e. how to parameterise it, how to use its returns, what other functions are often called around it, ...).
 
-An **example** $(l, s_0, c, s_T)$ is a mapping from a task description $l$ and initial environment state $s_0$ to python code $c$ that _succesfully_ generates the desired final state $s_T$.
+As the number of skills and examples (i.e. number of behaviours the robot is capable of) grows, it becomes less feasible to put them into a single fixed prompt, necessitating some form of instruction-specific retrieval of skills and examples. Even when they all fit into a prompt, too many skills and examples crowd out the useful information.
 
-A **task** is a pair $(l, s_0)$ of instruction and initial environment state. Tasks can be initialised in three ways:
-
-1. (Default) on-the-fly: an LLM generates environment setup code from a natural language description (see [agents/environment.py](agents/environment.py))
-2. From a previously encountered stored state (i.e. **EnvironmentConfiguration** - [agents/model/environment_configuration.py](agents/model/environment_configuration.py))
-3. By writing the task setup code yourself (see [utils/sample_tasks.py](utils/sample_tasks.py))
-
-We focused on on-the-fly task generation, with the goal of creating a flexible and interactive user experience.
-
-An **agent** is endowed with a **memory**, which stores the skills and examples available to the agent (e.g. memory/baseline), and determines its capabilities. We also store trajectories of human-agent-environment interactions for analysis purposes (though we didn't get around to using these), and environment configurations which we can use to initialise downstream tasks (also not fully set up yet).
-
-When presented with a novel task $(l, s_0)$ we retrieve similar previously encountered tasks (based on cosine-similarity of the embeddings of task descriptions). We accomplish this by interactively setting up _tasks of intermediate difficulty_, i.e. tasks that the agent can't yet solve, but is capable enough to solve with feedback. Learning can then happen simply by storing successful examples (i.e. adding successful $(l, s_0, c, s_T)$ tuples based on interaction), or by simultaneously learning skills. There are many reasons you might want to learn skills too, but the most important one is that when the agent calls a skill in a generated code $c$, it will **not** vary the behaviour encoded in the skill, enabling deliberate integration of user knowledge.
+Core to our approach is an interactive skill _teaching_ mechanism, by which we first describe to the agent the skill we want it to learn, and then provide tasks which test whether this skill _does what we want it to do_, for each of which we may provide corrective feedback to help it get there: "If the skill can be used to successfully solve all these tasks, then we've successfully learned this skill." In this way, we subsume many of the tasks of the RL engineer: the user interactively determines what the agent is capable of, proposes _reasonably_ difficult tasks, and provides feedback to alter the agents behaviour. The goal was to create a natural language UI for _teaching_ robots new behaviours, ultimately for Teleoperation or End-user programming.
 
 ## Interaction
 
-An agent is initialised from a given memory directory (e.g. "baseline"). If the directory doesn't exist yet, it is initialised with the base set of skills (i.e. the basic control and perception primitives) and examples. You start the interaction by calling
+We provide a simple CLI, which you can run with:
 
 ```bash
-agent.run()
+python main.py --memory-dir "baseline"
 ```
 
-The interaction is then structured as follows:
+This will interactively take you through _teaching_ the agent. `--memory-dir` determines the directory in [memory](memory) which contains the agents memory, and as such determines what the agent is capable of. You can use the [baseline](memory/baseline/) or [trained](memory/trained) (larger library of skills and examples) agents, or you can initialise a new one by providing the name of the directory.
 
-1. learn skill (y/n)
-2. attempt task (provide task description and initial environment state description)
-3. iteratively provide feedback on agent performance
-
-If you choose to learn a skill, you will be prompted to provide a natural language description of what the skill is supposed to accomplish, from which a python function header is generated, which you can iteratively refine. You then provide tasks which use this skill, which the agent tries to solve (with your feedback).
-
-If you don't learn a skill (i.e. select no in step 1), you are just attempting to solve a task with the agents current set of skills and examples. This would be useful for testing a trained agent on a given set of tasks, or providing a baseline of learning without skills.
-
-If you want to inspect an agents memory by rolling out previously _learned_ (task, behaviour) pairs, you can use
+Alternatively, you can test the agents capabilities on some [predefined tasks](task/__init__.py) by running:
 
 ```bash
-agent.run_past_example()
+python main.py --memory-dir "trained" --task "construct-smiley-face"
 ```
 
-which provides a simple CLI for retrieving these (along with their environment setup) and rolling them out. You can initialise an example agent trained with some more skills from the memory/trained directory, i.e.
+A task provides the initial environment setup and the description of what you want the agent to do. Determining whether or not the agent was successful is left up to the user. [task/**init**.py](task/__init__.py) lists the valid task identifiers, and you can find the tasks (and add new ones) in [task/tasks.py](task/tasks.py). You can also generate one from a prompt (e.g. "6 big red blocks and 2 small green ones") in the interactive CLI.
+
+A good example to get an understanding of skill learning is to teach the agent to build a "zigzag tower". First, see what a zigzag tower is by running:
 
 ```bash
-agent = CapOptioner(memory_dir="trained")
+python main.py --memory-dir "trained" --task "build-zigzag-tower"
 ```
 
-Some examples of behaviours you can view with `agent.run_past_example()` are:
+Then see what the untrained agent does in response to the same instruction.
 
-- "build a jenga tower"
-- "build a (w*d*h) block structure at (pose)"
-- "build a zig-zag tower"
-- "build a house"
-- "stack the blocks at (pose)"
-- "put (blockA) on the (side) side of (blockB)"
-- ...
+```bash
+python main.py --memory-dir "baseline" --task "build-zigzag-tower"
+```
 
-You can also just set up a task and issue these prompts independently from rolling out past examples, though each skill only works within certain constraints (i.e. from some set of initial states).
+Now enter the interactive CLI with the untrained agent, so you can teach it how to do it right.
+
+```bash
+python main.py --memory-dir "baseline"
+```
+
+First you need to declare that you want to "learn a skill". Then you provide a description of the skill you want to learn (which generates a python function header, i.e. the skill spec). Then you set up the task using the identifier `"build-zigzag-tower"`, and then you provide feedback on what the agent is doing until it looks the way you want it to look (which can be whatever you want). Once you have done this, you can test the agent on the same task, to observe the updated behaviour.
+
+```bash
+python main.py --memory-dir "baseline" --task "build-zigzag-tower" --debug True
+```
+
+You could now learn another skill on top of this one, for example building a "zigzag wall", by placing multiple zigzag towers next to one another. The point is that the agent now performs this behaviour the way you expect it to, doesn't lose this ability as you teach it more behaviours (as it might with handcrafted prompts), and that this can be achieved interactively.
+
+[data](data) contains some examples of learned behaviours. We included some [videos of failure modes on the simple task of stacking blocks](data/stack_blocks) with the baseline agent, which you can reproduce by running
+
+```bash
+python main.py --memory-dir "baseline" --task "stack-blocks"
+python main.py --memory-dir "baseline" --task "stack-blocks-induce-failure"
+```
+
+Sometimes it gets it right too, and if we altered the prompt to give it more information from the outset this would solve the problem as well. Run it a few times to get a sense of how noisy LLM code generation can be. Then run the same tasks with the trained agent to see the corrected (consistent) behaviour. The point is that you can get from "baseline" to "trained" purely via natural language interaction, and interactive task solving.
+
+You can run examples in the simulator by selecting "Run past examples" in the interactive CLI. Put in a task, and it will retrieve the most similar experiences the agent has stored, which can then be rolled out in the environment. (DISCLAIMER: some of these may not run properly, for a variety of reasons. If you generate new ones, this will work properly.) This is useful for inspecting the agents memory.
 
 ## Repository Structure
 
-This repository builds on the [Cliport](https://github.com/cliport/cliport) repo, primarily for the accompanying Ravens benchmark, though there is a lot of unused code leftover from it (mostly in [environments](environments) folder and [utils/general_utils]([utils/general_utils])).
-
 [agents] contains the LLM agent modules for [generating robot policy code](agents/action), for [setting up the environment](agents/environment), and for [skill parsing](agents/skill) (i.e. mapping natural language skill descriptions to python function headers). [agents/memory](agents/memory) contains all the memory related modules, which rely on [ChromaDB](https://www.trychroma.com), used for managing the skill and example libraries (as well as storing environment configs). [agents/model](agents/model) contains the relevant data classes (Skill, TaskExample, EnvironmentConfiguration, and InteractionTrace), for pickling and basic convenience functions.
 
-[environments](environments) contains all the environment-related code. This could be simplified substantially, or ideally replaced with something better.
+[environments](environments) contains all the environment-related code. This could be simplified substantially, or ideally replaced with something better. This repository builds on the [Cliport](https://github.com/cliport/cliport) repo, primarily for the accompanying Ravens benchmark, though there is a lot of unused code leftover from it (mostly in this [environments](environments) folder and [utils/general_utils]([utils/general_utils])).
 
-[memory](memory) contains the memories of agents trained based on our approach, storing skill and example libraries, as well as interaction traces. Each subfolder (e.g. [memory/baseline]) corresponds with a single agent.
+[memory](memory) contains the memories of agents trained based on our approach, storing skill and example libraries, as well as interaction traces. Each subfolder (e.g. [memory/baseline]) corresponds with a single agent. You can inspect the skill libraries (skills are saved in a readable manner) and manually delete, add or edit skills. This might be useful if you want to simply test the agents abilities with a larger number of core primitives, or to remove mistakenly saved skills. Examples are also readable, though they are a bit harder to inspect since we're not giving them meaningful names right now.
+
+[data](data) contains some examples of learned behaviours.
 
 [prompts](prompts) contains all the prompts we used, modelled as python fstrings.
 
 [scripts](scripts) contains some attempts at interpreting the agent memories, as well as an attempt at automatically testing whether an environment configuration is equal to another one (though this is more difficult than you might think – would also require some "softer" semantic approach, e.g. based on a VLM-verifier).
 
-[utils](utils) contains a number of necessary supporting functions:
+[utils](utils) contains a number of necessary supporting functions.
 
-- [utils/base_examples.py](utils/base_examples.py) : the base set of examples a new agent is initialised with. A simple text file would probably have been a better choice.
-- [utils/cap_utils.py](utils/cap_utils.py) : the code to execute LLM-written code in an environment - involves adding learned skills to the environment
-- [utils/core_primitives.py](utils/core_primitives.py) : the base set of skills a new agent is initialised with.
-- [utils/core_types.py](utils/core_primitives.py) : types the agent should adhere to when generating code. In retrospect, this may have hampered the agents performance somewhat, as well as increasing initial engineering overhead slightly. For example, we introduce a 'Point3D' class, which could have also simply been represented as a numpy array – in order to use functions the agent is familiar with from pretraining to manipulate Point3Ds it needs to first convert to np array...
-- [utils/llm_utils](utils/llm_utils) : functions that call the openAI API, i.e. LLM calls
-- [utils/sample_tasks.py](utils/sample_tasks.py) : an example of a handwritten task initialisation.
-- [utils/task_and_store.py](utils/task_and_store.py) : wraps the Ravens Task class, both to enable a natural language based environment initialisation, and to enable storing/restoring of environment state from EnvironmentConfigurations.
+The main agent code is in [cap_optioner.py](cap_optioner.py), and [main.py](main.py) is the entrypoint for the app.
 
-[main.py](main.py) contains the main agent running code, as well as _most_ of the logic for the user interaction.
+## Known Weaknesses
 
-## Future Work
-
-The point of this repo was to create a natural language based interface to _teach_ robots, similar to the interfaces that are being created in many other contexts. We motivate this with Moravec's paradox: robots are very bad at things that are trivial for any human, so any human could act as an effective teacher, provided the right interface.
-
-The interface we've created is still pretty bare-bones, and serves more as a proof-of-concept. Effective deployment would require a GUI, as well as a more interesting environment (e.g. [Nvidia Isaac Orbit](https://isaac-orbit.github.io)) and base set of skills (e.g. more sophisticated control algorithms), as well as improvements to the basic interaction, some of which we outline below.
+The point of this repo was to create a natural language based interface to _teach_ robots, similar to the interfaces that are being created in many other contexts. We describe some of the main weaknesses we encountered in implementing our current agent.
 
 1. GUI - the CLI limits the interactions that can be made available to the user, and is generally unwieldy. For instance, sometimes the policy code generated by the LLM gets worse from one iteration to the next, and right now we don't have a function to step back to the last attempt. A GUI would also provide a good way to inspect the agents memory, for example by playing videos of past examples/interactions, and providing an overview of the skills the agent has learned.
 
 2. Environment - our environment is quite limited, when technically this approach should enable arbitrary, open-ended behaviours in more meaningful scenarios, provided the right set of base control and perception primitives. Thanks to our context-dependent retrieval of skills and examples, we can provide a larger number of base control and perception primitives.
 
-3. Control APIs - the robotic arm is currently controlled with a waypoint-based inverse kinematics controller. This makes certain end-effector motions (e.g. along a straight line along the horizontal plane, or end-effector rotations not along z-axis) difficult to achieve. The gripper included in the Ravens benchmark doesn't seem to work very well either.
+3. Control APIs - the robotic arm is currently controlled with a waypoint-based inverse kinematics controller. This makes certain end-effector motions (e.g. along a straight line along the horizontal plane, or end-effector rotations not along z-axis) difficult to achieve, and made many interesting behaviours impossible from the outset. The gripper included in the Ravens benchmark doesn't seem to work very well either.
 
 4. Interpretability - we _could_ talk to the agent about what it is capable of, by interacting with its memory (e.g. asking it about what tasks it has solved previously, and what the environment looked like), though we have not implemented it. _Hints_ are one instance of this – while providing feedback on generated policy code, we make it possible for the user to tell the robot to use a specific skill (see [agents/action.py](agents/action.py) – revise_code_with_feedback).
+
+5. Skills that call other skills – in some cases, we would like to retain the flexibility of _generating_ code. The point of a skill is to scope a user's feedback and knowledge gained from successful interaction to a specific behaviour & context, so instead of writing the function body of a skill, we could generate it every time with learned examples and instructions. See [parse_location_description skill](memory/trained/skill_library/skills/parse_location_description/code.py) in the trained agent for a simple example of where feedback would still be useful, but writing hardcoded function code is infeasible. This turns skills into [_Language Model Programs_](https://code-as-policies.github.io).
 
 ## Acknowledgements
 
 - [Cliport](https://github.com/cliport/cliport) – for the basic Ravens benchmark setup
 - [Code-as-Policies](https://github.com/google-research/google-research/tree/master/code_as_policies) - code-generation for robotics
-- [LoHoRavens](https://github.com/Shengqiang-Zhang/LoHo-Ravens) - for task inspiration
-- [CapRavens](https://github.com/Flakeeeet/capravens) - was the basis for my thesis
 - [VOYAGER](https://github.com/MineDojo/Voyager), [Expel](https://github.com/LeapLabTHU/ExpeL), [DROC](https://github.com/Stanford-ILIAD/droc) - provided the inspiration for our code base, and the concept of LLM-Agent -_learning_ by reading and writing to memory based on experience

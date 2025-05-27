@@ -17,7 +17,7 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 class ExamplesManager:
     """stores task examples indexed by their task string"""
 
-    def __init__(self, MEMORY_DIR, config_manager: ConfigManager):
+    def __init__(self, MEMORY_DIR):
         self.EXAMPLE_LIBRARY_DIR = f"{MEMORY_DIR}/example_library"
         self.EXAMPLE_DIR = f"{self.EXAMPLE_LIBRARY_DIR}/examples"
         self.vector_db_dir = os.path.join(self.EXAMPLE_LIBRARY_DIR, "vector_db")
@@ -29,8 +29,6 @@ class ExamplesManager:
         self.vector_db = chroma_client.get_or_create_collection(
             name="examples", embedding_function=openai_ef
         )
-
-        self.config_manager = config_manager
 
     def add_unstored_examples_to_library(self):
         """if we manually added few-shot examples (as code pieces in to_be_added), call this function to add them to the skill library"""
@@ -44,10 +42,10 @@ class ExamplesManager:
     def all_examples(self) -> list[TaskExample]:
         ids = self.vector_db.get()["ids"]
         examples = [self.retrieve_task_with_id(id) for id in ids]
+        examples = [example for example in examples if example is not None]
         return examples
 
     def add_example_to_library(self, example: TaskExample):
-        # description = self.config_manager.store_final_config(example)
         task_example_description = f"{example.task}"
         self.vector_db.upsert(
             documents=[task_example_description], ids=[str(example.id)]

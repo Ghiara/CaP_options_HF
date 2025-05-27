@@ -15,3 +15,5 @@ dependencies:
   - pybullet
   - omegaconf
   - transforms3d
+  - ffmpeg
+  - libvorbis

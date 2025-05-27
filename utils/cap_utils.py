@@ -145,6 +145,18 @@ class FunctionCallVisitor(ast.NodeVisitor):
         self.generic_visit(node)  # Continue visiting child nodes
 
 
+def extract_task_and_skill_code(code) -> tuple[str, str]:
+    """given a code string with a function and some flat code, separate the two, and return both"""
+    task_code = get_non_function_code(code)
+    defs = get_defs(code, full_function_codes=True)
+    if len(defs) != 1:
+        print(defs)
+        return task_code, None
+    skill_code = defs[0]
+
+    return task_code, skill_code
+
+
 code = """
 def build_cube(a):
     x = 5

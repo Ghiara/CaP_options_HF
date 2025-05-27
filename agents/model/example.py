@@ -1,16 +1,18 @@
 import uuid, os, pickle, ast, re
 from agents.model.environment_configuration import EnvironmentConfiguration
+from utils.llm_utils import print_code
 
 
 class TaskExample:
     """stores the (task-string, successful-code) pairs, as well as initial and final config,
     and optionally skill-code, if the example was generated while learning a skill"""
+
     def __init__(
         self,
         task: str,
         code: str,
-        initial_config: EnvironmentConfiguration=None,
-        final_config: EnvironmentConfiguration=None,
+        initial_config: EnvironmentConfiguration = None,
+        final_config: EnvironmentConfiguration = None,
         skill_code: str = None,
     ):
         self.id = uuid.uuid4()
@@ -22,9 +24,6 @@ class TaskExample:
 
         # optionally also attach the code for the function that was learned with this task
         self.skill_code = skill_code
-
-    def __str__(self):
-        print(self.task)
 
     def dump(self, dir):
         os.makedirs(dir, exist_ok=True)

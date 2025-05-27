@@ -1,7 +1,3 @@
-from utils.core_types import *
-import numpy as np
-
-
 def move_block_next_to_reference(
     block: TaskObject, referenceBlock: TaskObject, axis: str = "x", gap: float = 0.005
 ):

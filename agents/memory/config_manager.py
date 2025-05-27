@@ -8,11 +8,12 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     api_key=os.getenv("OPENAI_API_KEY"), model_name="text-embedding-3-small"
 )
 
-class ConfigManager:
-    """stores configs for retrieval"""
 
-    def __init__(self, MEMORY_DIR):
-        self.CONFIG_LIBRARY_DIR = f"{MEMORY_DIR}/config_library"
+class ConfigManager:
+    """stores configs for retrieval for initialisation of downstream tasks"""
+
+    def __init__(self):
+        self.CONFIG_LIBRARY_DIR = "task/config_library"
         self.vector_db_dir = os.path.join(self.CONFIG_LIBRARY_DIR, "vector_db")
         self.configs_dir = os.path.join(self.CONFIG_LIBRARY_DIR, "configs")
         os.makedirs(self.configs_dir, exist_ok=True)

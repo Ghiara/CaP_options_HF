@@ -12,10 +12,8 @@ from environments.environment import Environment
 from agents.model.environment_configuration import EnvironmentConfiguration
 import pybullet as p
 
-import pickle
 import time
 import random
-import uuid
 
 import utils.general_utils as utils
 
@@ -28,12 +26,17 @@ class Task(Task):
     For example, adding different objects in different places
     This is more for myself... I could write each environment setup myself, but I think this would lead to more variety
     each environment setup is given as a function which returns a Task
+
+    Another reason for this was to enable storing the environment setup, so we can restore it later
+    1. This allows storing of configs, so we can use the robot itself to set up a task (allowing task setup to benefit from a smarter robot)
+    2. To allow us to run prior task examples (by setting up exact environment state, when having previously generated the environment setup)
+        -- this is necessary when skill code is overwritten, to see if the overwritten code still solves prior tasks
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config=None, lang_goal=None):
         super().__init__()
         self.taskObjects: list[TaskObject] = []
-        self.lang_goal = None
+        self.lang_goal = lang_goal
         self.config = config
 
     def reset(self, env):
@@ -207,7 +210,7 @@ class Task(Task):
 
 
 class GeneratedTask(Task):
-    def __init__(self, task_setup_code, task_description):
+    def __init__(self, task_setup_code, task_description=None):
         super().__init__()
         self.task_setup_code = task_setup_code
         self.lang_goal = task_description
@@ -216,8 +219,3 @@ class GeneratedTask(Task):
         super().reset(env)
 
         exec(self.task_setup_code)
-
-
-def build_task_from_setup_code(code, task_description):
-    task = GeneratedTask(code, task_description)
-

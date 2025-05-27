@@ -11,6 +11,7 @@ import pickle
 import inspect
 
 from agents.model import Skill, TaskExample, InteractionTrace, EnvironmentConfiguration
+
 openai_ef = embedding_functions.OpenAIEmbeddingFunction(
     api_key=os.getenv("OPENAI_API_KEY"), model_name="text-embedding-3-small"
 )
@@ -18,9 +19,9 @@ openai_ef = embedding_functions.OpenAIEmbeddingFunction(
 
 class SkillManager:
     """stores skills by their function header (i.e. function signature + docstring)
-    alternatively we could have generated descriptions of the functions and retrieved them by that, 
+    alternatively we could have generated descriptions of the functions and retrieved them by that,
     but the docstring should contain the necessary information
-    
+
     skills can also be added/edited manually in the python files in the corresponding skill directory,
     since retrieval only gets the skill IDs, and these are then mapped to the stored code strings
     """
@@ -39,9 +40,10 @@ class SkillManager:
             name="skill_library", embedding_function=openai_ef
         )
 
-        if self.num_skills == 0:
-            self.add_core_primitives_to_library()
+        self.remove_deleted_skills()
+        self.add_manually_added_skills()
 
+    def remove_deleted_skills(self):
         all_skills = os.listdir(self.SKILL_DIR)
         stored_skills = self.vector_db.get()["ids"]
         # check if there are any deleted skills, and if so, remove them from the vector db
@@ -50,6 +52,9 @@ class SkillManager:
                 print(f"deleting {skill_name}")
                 self.vector_db.delete(ids=[skill_name])
 
+    def add_manually_added_skills(self):
+        all_skills = os.listdir(self.SKILL_DIR)
+        stored_skills = self.vector_db.get()["ids"]
         # check if there are any skills which have not been added to the vector db and if so add them (to enable manual adding of skills)
         for skill_name in all_skills:
             if skill_name not in stored_skills and not skill_name.startswith("."):
@@ -122,20 +127,32 @@ class SkillManager:
         skill.dump(self.save_dir(skill.name))
 
     def retrieve_skills(
-        self, query, only_core_primitives=False, num_results=5
+        self, query, only_core_primitives=False, no_core_primitives=False, num_results=5
     ) -> list[Skill]:
         """simplest retrieval tactic: query is a task"""
 
         num_results = min(num_results, self.vector_db.count())
 
-        if only_core_primitives:
-            results = self.vector_db.query(
-                query_texts=[query],
-                n_results=num_results,
-                where={"is_core_primitive": True},
-            )
-        else:
-            results = self.vector_db.query(query_texts=[query], n_results=num_results)
+        # if only_core_primitives:
+        #     results = self.vector_db.query(
+        #         query_texts=[query],
+        #         n_results=num_results,
+        #         where={"is_core_primitive": True},
+        #     )
+        # else:
+        #     results = self.vector_db.query(query_texts=[query], n_results=num_results)
+
+        results = self.vector_db.query(
+            query_texts=[query],
+            n_results=num_results,
+            where={
+                "is_core_primitive": (
+                    True
+                    if only_core_primitives
+                    else (False if no_core_primitives else True or False)
+                )
+            },
+        )
 
         names = results["ids"][0]
         # get skill objects matching with the retrieved docs
@@ -192,10 +209,11 @@ class SkillManager:
             return skill_calls
         called_skills = [self.retrieve_skill_with_name(name) for name in skill_calls]
         return called_skills
-    
 
 
 if __name__ == "__main__":
-    skill_manager = SkillManager(MEMORY_DIR="memory/memory")
-    skills = skill_manager.all_skills
-    
+    skill_manager = SkillManager(MEMORY_DIR="memory/trained")
+    skills = skill_manager.retrieve_skills(
+        "parse_location_description", no_core_primitives=True, num_results=5
+    )
+    Skill.print_skills(skills)

@@ -1,11 +1,12 @@
-from task.task_and_store import Task, GeneratedTask
 from agents.model import EnvironmentConfiguration
 from environments.environment import Environment
-from agents.memory import MemoryManager
+from agents.memory import MemoryManager, ConfigManager
 from prompts.task_gen_prompt import task_setup_system_prompt
 from utils.llm_utils import query_llm, parse_code_response
+from task.task_and_store import Task, GeneratedTask
+from task import all_tasks
 
-from task.sample_tasks import Place2Blocks
+from utils.cli_utils import *
 
 
 class EnvironmentAgent:
@@ -15,70 +16,98 @@ class EnvironmentAgent:
     for now just a two-pass attempt
     first: retrieve previous configs
     if none chosen, generate new from string
-
-    THE TASK STRING SHOULDN'T BE PART OF THIS! relic of the Cliport repo, and associated Task class...
     """
 
-    def __init__(self, memory_manager: MemoryManager):
+    def __init__(
+        self,
+        memory_manager: MemoryManager,
+        config_manager: ConfigManager = None,
+        debug=False,
+    ):
+        self.debug = debug
         self.is_recording = False
 
         self.current_task = Task()
         self.setup_environment()
         self.reset()
         self.memory_manager = memory_manager
+        self.config_manager = config_manager
 
-    def parse_predefined_task(self, identifier):
-        self.current_task = get_task_with_identifier(identifier)
+    def parse_task_description(self):
+        task_str = simple_user_prompt("What task do you want the agent to solve?")
+        return task_str
 
-    def parse_task_dummy(self):
-        self.current_task = Place2Blocks()
+    def task_setup(self):
+        """there is 3 basic ways to set up the task:
+        (1) generate a new one
+        (2) use an existing config
+        (3) use a predefined task (in task/tasks.py)
+        options 1 and 2 require you to specify the task description, while dynamically forming the initial environment state
+        option 3 presumes both initial state and task description are given
 
-    def parse_task(self):
-        task_str = input("give the task to be solved:\n")
-        task = self.parse_env_setup()
-        task.set_lang_goal(task_str)
-        self.current_task = task
+        this function ensures the task is set up correctly
+        """
+        system_cli_message("TASK SETUP")
 
-    def parse_env_setup(self, allow_existing_configs: bool = False):
-        env_setup_prompt = input(
-            "how should the environment be set up? ('keep' for same setup)\n"
+        choice = choice_from_input_items(
+            [
+                "Generate new task",
+                "Use stored environment state",
+                "Use predefined task",
+            ],
+            "How would you like to set up the task?",
+        )
+        match choice:
+            case 1:
+                self.task_with_generated_setup_code()
+            case 2:
+                self.task_with_stored_config()
+            case 3:
+                self.initialise_predefined_task()
+
+    def task_with_generated_setup_code(self):
+        env_setup_prompt = simple_user_prompt("How should the environment be set up?")
+        setup_code = self.generate_task_setup_code(env_setup_prompt)
+        self.current_task = GeneratedTask(setup_code)
+        self.reset()
+        self.current_task.lang_goal = self.parse_task_description()
+
+    def task_with_stored_config(self):
+        """checks for existing configs for initial environment state"""
+        config_description = simple_user_prompt(
+            "Give a description of the stored environment state you're looking for"
         )
 
-        if env_setup_prompt == "keep":
-            return self.current_task
-        elif env_setup_prompt == "none":
-            task = Task()
-            return task
+        existing_configs = self.config_manager.retrieve_configs(
+            config_description, num_results=10
+        )
+        descriptions = [config.description for config in existing_configs]
+        choice = choice_from_input_items(
+            descriptions,
+            "Which of the following configurations would you like to use?",
+        )
 
-        if allow_existing_configs:
-            existing_configs = self.memory_manager.retrieve_configs(
-                env_setup_prompt, num_results=10
-            )
-            print(
-                f"existing configs\n {'\n'.join([config.description for config in existing_configs])}"
-            )
-            use_existing_config = input(
-                "use existing config? (provide index of config or none if don't want to use) \n"
-            )
+        if choice is None:
+            return self.task_setup()
 
-            if use_existing_config != "none":
-                config = existing_configs[int(use_existing_config)]
-                task = GeneratedTask()
-                task.set_config(config)
+        config = existing_configs[choice - 1]
+        self.current_task = Task(config=config)
+        self.reset()
+        task_str = self.parse_task_description()
+        self.current_task.lang_goal = task_str
 
-                modify_config = input("modify the config? (prompt or none)")
+    def initialise_predefined_task(self, identifier=None):
+        """initialises the task from a provided python file"""
+        if identifier is None:
+            identifier = simple_user_prompt("Give the descriptor of the task")
 
-                if modify_config != "none":
-                    setup_code = self.generate_task_setup_code(modify_config)
-                    task.set_task_setup_code(setup_code)
-
-                return task
-
-        task = GeneratedTask()
-        setup_code = self.generate_task_setup_code(env_setup_prompt)
-        print(setup_code)
-        task.set_task_setup_code(setup_code)
-        return task
+        if identifier in all_tasks:
+            task = all_tasks[identifier]
+            self.current_task = task()
+            return
+        else:
+            print("A task with that identifier does not exist.")
+            return self.task_setup()
 
     def setup_environment(self):
         from pathlib import Path
@@ -86,7 +115,7 @@ class EnvironmentAgent:
 
         video_save_dir = Path(__file__).parent.parent / "data"
         env = Environment(
-            "/Users/maxfest/vscode/thesis/thesis/environments/assets",
+            "environments/assets",
             disp=True,
             shared_memory=False,
             hz=480,
@@ -118,7 +147,7 @@ class EnvironmentAgent:
         return config
 
     def pop_config(self) -> EnvironmentConfiguration:
-        # TODO: this function should enable the user to solve a task in steps, 
+        # TODO: this function should enable the user to solve a task in steps,
         # rather than generating the entire solution code in one go
         # while simple in principle, actually generating code in a manner that enables this is not trivial
         # would definitely be a useful function though
@@ -147,17 +176,19 @@ class EnvironmentAgent:
 
         response = query_llm(messages)
         code = parse_code_response(response)
+        if self.debug:
+            debug_message(code, "Generated task setup code")
         return code
-
 
 
 if __name__ == "__main__":
     import time
 
-    env_agent = EnvironmentAgent(MemoryManager(root_dir="memory/memory"))
+    env_agent = EnvironmentAgent(
+        MemoryManager("memory/memory"), config_manager=ConfigManager()
+    )
 
-    env_agent.parse_task()
-
+    env_agent.task_setup()
     env_agent.reset()
 
     time.sleep(10)

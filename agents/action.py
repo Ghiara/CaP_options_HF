@@ -5,6 +5,7 @@ from utils.llm_utils import (
     print_code,
 )
 from utils.cap_utils import cap_code_exec
+from utils.cli_utils import *
 
 from agents.model.skill import Skill
 from agents.model.example import TaskExample
@@ -17,10 +18,17 @@ from collections import Counter
 class Actor:
     """
     responsible for handling the main action loop
-    generates policy code by dynamically composing the prompt, and rewrites code according to user feedback
+    generates policy code by dynamically composing the prompt (i.e. retrieving skills and examples),
+    and rewrites code according to user feedback
     """
 
-    def __init__(self, memory_manager: MemoryManager, skill_parser: SkillParser = None):
+    def __init__(
+        self,
+        memory_manager: MemoryManager,
+        skill_parser: SkillParser = None,
+        debug=False,
+    ):
+        self.debug = debug
         self.memory_manager = memory_manager
         self.skill_parser = skill_parser
         self.reset()
@@ -44,23 +52,23 @@ class Actor:
         self.env = env
         self.task = task
 
-        # need function for retrieving other potentially task-relevant skills
-        hint = input("what prior knowledge can I use to solve this task?")
-        if hint == "none":
-            examples = self.memory_manager.retrieve_examples(task, num_results=5)
-        else:
-            examples = self.skill_parser.apply_task_hint(hint)
+        examples = self.memory_manager.example_manager.retrieve_similar_examples(
+            task, num_results=5
+        )
 
-        for example in examples:
-            print(example.task)
-        # skills = self.memory_manager.skill_manager.retrieve_skills(
-        #     "query", only_core_primitives=True, num_results=20
-        # )
-        skills = self.memory_manager.skill_manager.all_skills
-        # skills = self.retrieve_task_related_skills(task_examples=few_shot_examples)
-        # skills = self.retrieve_task_related_skills_naive(task, num_results=50)
-        # skills = []
-        # skills = self.actively_request_examples()
+        # TODO: we tried a few retrieval strategies here, but none worked that well
+        # this is a hard problem, and the current solution is more of a placeholder...
+        # this ties the retrieved skills to having solved similar tasks previously
+        # so if example retrieval fails, so does this, and then the agent has no chance
+        # HINTS provide a simple fallback – the user can override default retrieval
+        # Alternatively, we could add more autonomy for the agent to interact with its own memory
+        skills = self.retrieve_task_related_skills(
+            task=task, task_examples=examples, num_results=10
+        )
+
+        if self.debug:
+            print_examples(examples)
+            print_list([skill.name for skill in skills], "Skills")
 
         prompt = skill_learning_prompt(
             task=task,
@@ -92,14 +100,18 @@ class Actor:
         self.task = task
 
         # need function for retrieving other potentially task-relevant skills
-        few_shot_examples = self.memory_manager.retrieve_examples(task, num_results=20)
+        examples = self.memory_manager.example_manager.retrieve_similar_examples(
+            task, num_results=5
+        )
         skills = self.retrieve_task_related_skills(task, num_results=10)
 
-        prompt = actor_prompt(
-            task=task, few_shot_examples=few_shot_examples, api=skills
-        )
+        if self.debug:
+            print_examples(examples)
+            print_list([skill.name for skill in skills], "Skills")
 
-        print(prompt)
+        prompt = actor_prompt(task=task, few_shot_examples=examples, api=skills)
+
+        # print(prompt)
 
         self.messages = [
             {"role": "system", "content": actor_system_prompt},
@@ -113,20 +125,18 @@ class Actor:
 
         return code
 
-    def revise_code_with_feedback(self, feedback):
+    def revise_code_with_hint(self, hint: str):
+        examples = self.skill_parser.apply_task_hint(hint)
+        self.revise_code_with_feedback(hint, examples)
+
+    def revise_code_with_feedback(
+        self, feedback: str, examples: list[TaskExample] = []
+    ):
         """code revision should be different from initial task plan - there should be a different retrieval strategy for this
         for example also finding past examples of how feedback was incorporated into a solution
         """
 
         from prompts.actor import actor_iteration_prompt
-
-        examples = []
-        if feedback.startswith("hints:"):
-            hints = feedback.split(":")[1].split(",")
-            examples = self.skill_parser.apply_task_hint(hints)
-        # elif feedback.startswith("skill-hints:"):
-        #     hints = feedback.split(":")[1].split(",")
-        #     skills = self.skill_parser.apply_skill_hint(feedback)
 
         self.messages.append(
             {
@@ -144,7 +154,10 @@ class Actor:
         code = parse_code_response(response)
         self.last_code_str = code
         self.messages.append({"role": "assistant", "content": self.last_code_str})
-        print_code(code)
+
+        if self.debug:
+            debug_message(code, "Generated code")
+
         dependencies = self.memory_manager.skill_manager.resolve_dependencies(
             self.last_code_str
         )
@@ -181,18 +194,22 @@ class Actor:
 
     def generated_subtask_based_retrieval(self, task) -> list[Skill]:
         # generate a plan by decomposing the task into subtasks, and then retrieving a skill for each subtask
+        # TODO: another sensible retrieval strategy – instead of retrieving by task similarity,
+        # allow the agent to decompose into subtasks (in natural language) and retrieve based on that
         pass
 
     def retrieve_task_related_skills_naive(self, task, num_results=20) -> list[Skill]:
         # naive strategy: retrieve skills by
-        return self.memory_manager.retrieve_skills(task, num_results=num_results)
+        return self.memory_manager.skill_manager.retrieve_skills(
+            task, num_results=num_results
+        )
 
     def retrieve_task_related_skills(
         self, task=None, task_examples: list[TaskExample] = None, num_results=10
     ) -> list[Skill]:
         """can specify either a task, or a list of task examples - if specifying a task, it retrieves similar tasks first"""
         similar_tasks = (
-            self.memory_manager.retrieve_examples(task)
+            self.memory_manager.example_manager.retrieve_similar_examples(task)
             if task_examples is None
             else task_examples
         )
@@ -205,7 +222,9 @@ class Actor:
     def retrieve_skill_related_skills(
         self, skill: Skill, num_results=10
     ) -> list[Skill]:
-        similar_skills = self.memory_manager.retrieve_skills(skill.description)
+        similar_skills = self.memory_manager.skill_manager.retrieve_skills(
+            skill.description
+        )
         return self.extract_skill_calls_from_code_strings(
             [skill.code for skill in similar_skills], num_results
         )

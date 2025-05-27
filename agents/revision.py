@@ -1,5 +1,5 @@
 from utils.cap_utils import cap_code_exec
-from utils.task_and_store import Task
+from task.task_and_store import Task
 from agents.model import EnvironmentConfiguration, Skill, TaskExample
 from agents.memory import MemoryManager
 from agents.environment import EnvironmentAgent
@@ -10,6 +10,7 @@ class RevisionAgent:
     """checks whether a task is still solved successfully when skill code changes,
     but checking based on EnvironmentConfiguration equality is too strict for most cases (i.e. we may get false negatives)
     """
+
     def __init__(
         self,
         memory_manager: MemoryManager,

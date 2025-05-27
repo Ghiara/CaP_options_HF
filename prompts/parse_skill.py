@@ -46,6 +46,10 @@ def refine_function_header_prompt(function_code, refinement):
     """
 
 
+## ----------------------------------
+## used to parse hints
+
+
 class ParsedList(BaseModel):
     parsed_list: list[str]
 
