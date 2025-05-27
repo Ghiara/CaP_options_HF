@@ -1,4 +1,4 @@
-## CaP-Learner
+## Teach your Robot!
 
 1. [Introduction](#Introduction)
 
