@@ -57,15 +57,15 @@ Core to our approach is an interactive skill _teaching_ mechanism, by which we f
 We provide a simple CLI, which you can run with:
 
 ```bash
-python main.py --memory-dir "baseline"
+python main.py --memory_dir "baseline"
 ```
 
-This will interactively take you through _teaching_ the agent. `--memory-dir` determines the directory in [memory](memory) which contains the agents memory, and as such determines what the agent is capable of. You can use the [baseline](memory/baseline/) or [trained](memory/trained) (larger library of skills and examples) agents, or you can initialise a new one by providing the name of the directory.
+This will interactively take you through _teaching_ the agent. `--memory_dir` determines the directory in [memory](memory) which contains the agents memory, and as such determines what the agent is capable of. You can use the [baseline](memory/baseline/) or [trained](memory/trained) (larger library of skills and examples) agents, or you can initialise a new one by providing the name of the directory.
 
 Alternatively, you can test the agents capabilities on some [predefined tasks](task/__init__.py) by running:
 
 ```bash
-python main.py --memory-dir "trained" --task "construct-smiley-face"
+python main.py --memory_dir "trained" --task "construct-smiley-face"
 ```
 
 A task provides the initial environment setup and the description of what you want the agent to do. Determining whether or not the agent was successful is left up to the user. [task/**init**.py](task/__init__.py) lists the valid task identifiers, and you can find the tasks (and add new ones) in [task/tasks.py](task/tasks.py). You can also generate one from a prompt (e.g. "6 big red blocks and 2 small green ones") in the interactive CLI.
@@ -73,25 +73,25 @@ A task provides the initial environment setup and the description of what you wa
 A good example to get an understanding of skill learning is to teach the agent to build a "zigzag tower". First, see what a zigzag tower is by running:
 
 ```bash
-python main.py --memory-dir "trained" --task "build-zigzag-tower"
+python main.py --memory_dir "trained" --task "build-zigzag-tower"
 ```
 
 Then see what the untrained agent does in response to the same instruction.
 
 ```bash
-python main.py --memory-dir "baseline" --task "build-zigzag-tower"
+python main.py --memory_dir "baseline" --task "build-zigzag-tower"
 ```
 
 Now enter the interactive CLI with the untrained agent, so you can teach it how to do it right.
 
 ```bash
-python main.py --memory-dir "baseline"
+python main.py --memory_dir "baseline"
 ```
 
 First you need to declare that you want to "learn a skill". Then you provide a description of the skill you want to learn (which generates a python function header, i.e. the skill spec). Then you set up the task using the identifier `"build-zigzag-tower"`, and then you provide feedback on what the agent is doing until it looks the way you want it to look (which can be whatever you want). Once you have done this, you can test the agent on the same task, to observe the updated behaviour.
 
 ```bash
-python main.py --memory-dir "baseline" --task "build-zigzag-tower" --debug True
+python main.py --memory_dir "baseline" --task "build-zigzag-tower" --debug True
 ```
 
 You could now learn another skill on top of this one, for example building a "zigzag wall", by placing multiple zigzag towers next to one another. The point is that the agent now performs this behaviour the way you expect it to, doesn't lose this ability as you teach it more behaviours (as it might with handcrafted prompts), and that this can be achieved interactively.
@@ -99,8 +99,8 @@ You could now learn another skill on top of this one, for example building a "zi
 [data](data) contains some examples of learned behaviours. We included some [videos of failure modes on the simple task of stacking blocks](data/stack_blocks) with the baseline agent, which you can reproduce by running
 
 ```bash
-python main.py --memory-dir "baseline" --task "stack-blocks"
-python main.py --memory-dir "baseline" --task "stack-blocks-induce-failure"
+python main.py --memory_dir "baseline" --task "stack-blocks"
+python main.py --memory_dir "baseline" --task "stack-blocks-induce-failure"
 ```
 
 Sometimes it gets it right too, and if we altered the prompt to give it more information from the outset this would solve the problem as well. Run it a few times to get a sense of how noisy LLM code generation can be. Then run the same tasks with the trained agent to see the corrected (consistent) behaviour. The point is that you can get from "baseline" to "trained" purely via natural language interaction, and interactive task solving.
