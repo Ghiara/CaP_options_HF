@@ -32,7 +32,7 @@ class Environment(gym.Env):
         self,
         assets_root,
         task=None,
-        disp=False,
+        disp=False, # for cap-options: True
         shared_memory=False,
         hz=240,
         record_cfg=None,

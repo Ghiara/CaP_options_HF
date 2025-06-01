@@ -13,6 +13,7 @@ from task.task_and_store import Task
 from utils.cap_utils import extract_task_and_skill_code
 from utils.cli_utils import *
 
+import streamlit as st
 
 class CapOptioner:
     """
@@ -184,23 +185,26 @@ class CapOptioner:
                     self.env_agent.reset()
                     code = self.actor.revise_code_with_feedback(feedback)
 
-    def run_past_example(self):
+    def run_past_example(self, gui_mode=False):
         """retrieves past solved tasks from the agents memory similar to the requested task string,
         and then rolls them out in the environment"""
-        system_cli_message("RUNNING PAST EXAMPLE")
-        example_string = input("give a task:")
-        example = self.memory_manager.example_manager.retrieve_similar_examples(
-            example_string, num_results=10
-        )
-        example_tasks = [example.task for example in example]
-        example_index = choice_from_input_items(
-            example_tasks, "which task would you like to run?"
-        )
-        example = example[example_index - 1]
-        self.env_agent.set_to_task_and_config(example.task, example.initial_config)
-        if self.debug:
-            debug_message(example.code, "Running past example code")
-        self.actor.run_code_str(self.env_agent.env, example.code)
+        if gui_mode:
+            st.header("Run Past Example")
+        else:
+            system_cli_message("RUNNING PAST EXAMPLE")
+            example_string = input("give a task:")
+            example = self.memory_manager.example_manager.retrieve_similar_examples(
+                example_string, num_results=10
+            )
+            example_tasks = [example.task for example in example]
+            example_index = choice_from_input_items(
+                example_tasks, "which task would you like to run?"
+            )
+            example = example[example_index - 1]
+            self.env_agent.set_to_task_and_config(example.task, example.initial_config)
+            if self.debug:
+                debug_message(example.code, "Running past example code")
+            self.actor.run_code_str(self.env_agent.env, example.code)
 
     def chat_about_capabilities(self):
         """TODO: allows the user to chat with the agent about its capabilities, by interacting with its memory"""
@@ -221,6 +225,17 @@ class CapOptioner:
 
         skills = [skill.name for skill in skills if not skill.is_core_primitive]
         print_list(skills, "Learned skills:")
+
+
+class CapOptioner_GUI(CapOptioner):
+    """
+    CapOptioner with a GUI interface
+    """
+
+    def __init__(self, memory_dir="baseline", debug=False):
+        super().__init__(memory_dir, debug)
+
+
 
 
 if __name__ == "__main__":

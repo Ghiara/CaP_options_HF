@@ -8,6 +8,8 @@ from task import all_tasks
 
 from utils.cli_utils import *
 
+import streamlit as st
+
 
 class EnvironmentAgent:
     """
@@ -37,7 +39,7 @@ class EnvironmentAgent:
         task_str = simple_user_prompt("What task do you want the agent to solve?")
         return task_str
 
-    def task_setup(self):
+    def task_setup(self, gui_mode=False):
         """there is 3 basic ways to set up the task:
         (1) generate a new one
         (2) use an existing config
@@ -47,36 +49,82 @@ class EnvironmentAgent:
 
         this function ensures the task is set up correctly
         """
-        system_cli_message("TASK SETUP")
-
-        choice = choice_from_input_items(
-            [
-                "Generate new task",
-                "Use stored environment state",
-                "Use predefined task",
-            ],
-            "How would you like to set up the task?",
-        )
-        match choice:
-            case 1:
-                self.task_with_generated_setup_code()
-            case 2:
+        if gui_mode:
+            st.subheader("Task Setup", divider=True)
+            st.write(
+                "**This is the task setup interface. You can set up a task in three ways:**"
+            )
+            st.write(
+                """
+                - 1. Generate a new task based on a description you provide.
+                - 2. Use an existing stored environment state.
+                - 3. Use a predefined task from the available tasks.
+                """
+            )
+            selection = st.radio(
+                "How would you like to set up the task?",
+                options=[
+                    "Generate new task",
+                    "Use stored environment state",
+                    "Use predefined task",
+                ],
+                index=None,
+            )
+            if selection == "Generate new task":
+                self.task_with_generated_setup_code(gui_mode=True)
+            elif selection == "Use stored environment state":
                 self.task_with_stored_config()
-            case 3:
-                self.initialise_predefined_task()
+            elif selection == "Use predefined task":
+                # identifier = st.text_input(
+                #     "Select the predefined task you want to use:"
+                # )
+                identifier = st.selectbox(
+                    "Select the predefined task you want to use:",
+                    options=list(all_tasks.keys()),
+                    index=None,
+                )
+                st.write(f"Selected task identifier: **{identifier}**")
+                if identifier:
+                    self.initialise_predefined_task(identifier)
+        else:
+            system_cli_message("TASK SETUP")
 
-    def task_with_generated_setup_code(self):
-        env_setup_prompt = simple_user_prompt("How should the environment be set up?")
+            choice = choice_from_input_items(
+                [
+                    "Generate new task",
+                    "Use stored environment state",
+                    "Use predefined task",
+                ],
+                "How would you like to set up the task?",
+            )
+            match choice:
+                case 1:
+                    self.task_with_generated_setup_code()
+                case 2:
+                    self.task_with_stored_config()
+                case 3:
+                    self.initialise_predefined_task()
+
+    def task_with_generated_setup_code(self, gui_mode=False):
+        if gui_mode:
+            env_setup_prompt = st.text_input("How should the environment be set up?")
+        else:
+            env_setup_prompt = simple_user_prompt("How should the environment be set up?")
         setup_code = self.generate_task_setup_code(env_setup_prompt)
         self.current_task = GeneratedTask(setup_code)
         self.reset()
         self.current_task.lang_goal = self.parse_task_description()
 
-    def task_with_stored_config(self):
+    def task_with_stored_config(self, gui_mode=False):
         """checks for existing configs for initial environment state"""
-        config_description = simple_user_prompt(
-            "Give a description of the stored environment state you're looking for"
-        )
+        if gui_mode:
+            config_description = st.text_input(
+                "Give a description of the stored environment state you're looking for",
+                )
+        else:
+            config_description = simple_user_prompt(
+                "Give a description of the stored environment state you're looking for"
+            )
 
         existing_configs = self.config_manager.retrieve_configs(
             config_description, num_results=10
@@ -96,7 +144,7 @@ class EnvironmentAgent:
         task_str = self.parse_task_description()
         self.current_task.lang_goal = task_str
 
-    def initialise_predefined_task(self, identifier=None):
+    def initialise_predefined_task(self, identifier:str=None):
         """initialises the task from a provided python file"""
         if identifier is None:
             identifier = simple_user_prompt("Give the descriptor of the task")
@@ -116,7 +164,9 @@ class EnvironmentAgent:
         video_save_dir = Path(__file__).parent.parent / "data"
         env = Environment(
             "environments/assets",
-            disp=True,
+            ##############################################################
+            disp=True, # TODO: rendering in streamlit is not supported yet
+            ##############################################################
             shared_memory=False,
             hz=480,
             record_cfg={
@@ -145,6 +195,20 @@ class EnvironmentAgent:
             self.env.start_rec(video_file_name)
 
         return config
+
+    def reset_in_gui(self):
+        self.env.set_task(self.current_task)
+        self.env.reset()
+        config = self.get_current_config()
+        self.config_stack = [config]
+
+        if self.is_recording:
+            from datetime import datetime
+
+            video_file_name = datetime.now().strftime("%d_%H-%M-%S")
+            self.env.start_rec(video_file_name)
+        color_img = self.env.render()
+        return config, color_img
 
     def pop_config(self) -> EnvironmentConfiguration:
         # TODO: this function should enable the user to solve a task in steps,
